@@ -1,8 +1,13 @@
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useState, useRef } from 'react';
+import { StyleSheet, View, Platform } from 'react-native';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { captureRef } from "react-native-view-shot";
+import domtoimage from 'dom-to-image';
+
+
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 
 import ImageViewer from './components/ImageViewer';
 import Button from './components/Button';
@@ -15,10 +20,15 @@ import EmojiSticker from './components/EmojiSticker';
 const PlaceHolderImage = require('./assets/images/background-image.png');
 
 export default function App() {
+    const [status, requestPermission] = MediaLibrary.usePermissions();
     const [selectedImage, setSelectedImage] = useState(null);
     const [showAppOptions, setShowAppOptions] = useState(false);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [pickedEmoji, setPickedEmoji] = useState(null);
+    const imageRef = useRef();
+    if (status === null) {
+        requestPermission();
+    }
 
     const pickImageAsync = async () => {
         let result = await ImagePicker.launchImageLibraryAsync({
@@ -45,14 +55,38 @@ export default function App() {
         setIsModalVisible(false);
     };
 
-    const onSaveImageAsync = () => {
+    const onSaveImageAsync = async () => {
+        try {
+            if (Platform.OS === 'web') {
+                const dataUrl = await domtoimage.toPng(imageRef.current, {
+                    quality: 1,
+                    width: 320,
+                    height: 440,
+                });
+                let link = document.createElement('a');
+                link.download = 'image.png';
+                link.href = dataUrl
+                link.click();
+            } else {
+                const localUri = await captureRef(imageRef, {
+                    height: 440,
+                    quality: 1,
+                });
 
+                await MediaLibrary.saveToLibraryAsync(localUri);
+                if (localUri) {
+                    alert('Image saved successfully');
+                }
+            }
+        } catch (error) {
+            console.log('Error saving image', error);
+        }
     };
 
     return (
         <GestureHandlerRootView style={styles.container}>
             <View style={styles.container}>
-                <View style={styles.imageContainer}>
+                <View style={styles.imageContainer} ref={imageRef} collapsable={false}>
                     <ImageViewer placeholderImageSource={PlaceHolderImage} selectedImage={selectedImage} />
                     {pickedEmoji && <EmojiSticker imageSize={40} stickerSource={pickedEmoji} />}
                 </View>
@@ -74,7 +108,7 @@ export default function App() {
                 <EmojiPicker isVisible={isModalVisible} onClose={onModalClose}>
                     <EmojiList onSelect={setPickedEmoji} onCloseModal={onModalClose} />
                 </EmojiPicker>
-                <StatusBar style="auto" />
+                <StatusBar style="light" />
             </View>
         </GestureHandlerRootView>
     );
